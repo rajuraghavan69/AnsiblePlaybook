@@ -1,0 +1,34 @@
+---
+- name: "Onboard Windows Servers to Azure Arc-enabled servers with Public endpoint connectivity"
+  hosts: all
+  vars:
+    azure:
+      service_principal_id: '952bf20f-0ca9-42f8-9870-640ea0c6d7a5'
+      service_principal_secret: 'INSERT-SERVICE-PRINCIPAL-SECRET'
+      resource_group: 'rg-arc-onsite-poc'
+      tenant_id: '8dc94566-ec40-4aad-abe0-739751b9d5b4'
+      subscription_id: 'edf6dd9d-7c4a-4bca-a997-945f3d60cf4e'
+      location: 'eastus'
+  tasks:
+- name: Download the Connected Machine Agent on Windows servers
+  win_get_url:
+  url: https://aka.ms/AzureConnectedMachineAgent
+  dest: C:\AzureConnectedMachineAgent.msi
+  when: (ansible_os_family == 'Windows') and (not azcmagent_win_downloaded.stat.exists)
+
+- name: Install the Connected Machine Agent on Windows servers
+  win_package:
+  path: C:\AzureConnectedMachineAgent.msi
+  when: (ansible_os_family == 'Windows') and (not azcmagent_win_downloaded.stat.exists)
+
+- name: Check if the Connected Machine Agent has already been connected on Windows
+  win_command: azcmagent check
+  register: azcmagent_win_connected
+  when: ansible_os_family == 'Windows'
+  ignore_errors: yes
+  failed_when: (azcmagent_win_connected.rc not in [ 0, 16 ])
+  changed_when: False
+
+- name: Connect the Connected Machine Agent on Windows servers to Azure Arc
+  win_shell: '& $env:ProgramFiles\AzureConnectedMachine\Agentazcmagent.exe connect --service-principal-id "{{ azure.service_principal_id }}" --service-principal-secret "{{ azure.service_principal_secret }}" --resource-group "{{ azure.resource_group }}" --tenant-id "{{ azure.tenant_id }}" --location "{{ azure.location }}" --subscription-id "{{ azure.subscription_id }}"'
+  when: (ansible_os_family == 'Windows') and (azcmagent_win_connected.rc is defined and azcmagent_win_connected.rc != 0)
